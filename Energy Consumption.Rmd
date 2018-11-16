@@ -1,0 +1,261 @@
+#Energy Consumption Project
+#Start date: November 9, 2018
+#Deadline proposal: November 14, 2018
+#Deadline Sprint 1: November 21, 2018
+```{r}
+#Setting up
+rm(list = ls())
+getwd()
+setwd("C:/Users/carol/Desktop/Ubiqum/R/Energy Consumption")
+
+#Libraries
+library(lubridate)
+library(dplyr)
+library(zoo)
+library(ggplot2)
+library(hms)
+
+#Loading data set
+consumption <- read.csv("household_power_consumption.txt", header = TRUE, sep =";", na.strings=c("NA", "-", "?"), stringsAsFactors=FALSE)
+  
+#Data Pre-processing
+##Creating date+time column (try what is on the plan of attack later)
+DateTime <- paste(consumption$Date, consumption$Time)
+consumption <- cbind(consumption, DateTime)
+##Converting date+time format (try with  DPLYR and TIDYR)
+consumption$DateTime <- strptime(consumption$DateTime, "%d/%m/%Y %H:%M:%S")
+consumption$Date <- as.Date(consumption$Date, "%d/%m/%Y")
+
+consumption$DateTime <- as.POSIXct(consumption$DateTime)
+
+##Renaming submetering areas
+names(consumption) <- c("Date","Time","ActivePowerKW","ReactivePowerKW","Voltage",
+                        "CurrentIntensity","Kitchen_WattHour","LaundryRoom_WattHour","HeaterAirCon_WattHour","DateTime")
+
+##Converting data types into numeric
+###consumption$ActivePowerKW <- as.numeric(consumption$ActivePowerKW)
+###consumption$ReactivePowerKW <- as.numeric(consumption$ReactivePowerKW)
+###consumption$Voltage <- as.numeric(consumption$Voltage)
+###consumption$CurrentIntensity <- as.numeric(consumption$CurrentIntensity)
+###consumption$Kitchen_WattHour <- as.numeric(consumption$Kitchen_WattHour)
+###consumption$LaundryRoom_WattHour <- as.numeric(consumption$Kitchen_WattHour)
+###consumption$HeaterAirCon_WattHour <- as.numeric(consumption$Kitchen_WattHour)
+
+##Create Active & Reactive Power in watt hour
+consumption$Active_WattHour <- consumption$ActivePowerKW * 1000/60
+consumption$Reactive_WattHour <- consumption$ReactivePowerKW * 1000/60
+
+
+##Checking for NAs
+sum(is.na(consumption))
+###Total 234051
+sum(is.na(consumption$ActivePower))
+### 25979
+sum(is.na(consumption$ReactivePower))
+### 25979
+sum(is.na(consumption$Kitchen_WattHour))
+### 25979
+sum(is.na(consumption$LaundryRoom))
+### 25979
+sum(is.na(consumption$HeaterAirCon))
+### 25979
+sum(is.na(consumption$Voltage))
+###none
+sum(is.na(consumption$CurrentIntensity))
+###none
+sum(is.na(consumption$DateTime))
+### 240
+
+##Creating columns for month, weekday, hour, day
+consumption$Year <- year(consumption$DateTime)
+consumption$Month <- month(consumption$DateTime)
+consumption$WeekDay <- wday(consumption$DateTime, label = TRUE, abbr = FALSE)
+consumption$Hour <- hour(consumption$DateTime)
+consumption$HMS <- as.hms(consumption$DateTime)
+consumption$Day <- day(consumption$DateTime)
+
+
+#REVIEW THIS
+#consumption$ApparentPower_WattHour <- consumption$Active_WattHour + consumption$Reactive_WattHour 
+
+##Creating data sets for each year
+data2007 <- consumption %>% filter(Date <= as.Date("2007/12/10"))
+data2008 <- consumption %>% filter(Date > as.Date("2007/12/10") 
+                                   & Date <= as.Date("2008/12/05"))
+data2009 <- consumption %>% filter(Date > as.Date("2008/12/05") & Date <= as.Date("2009/11/30"))
+data2010 <- consumption %>% filter(Date > as.Date("2009/11/30"))
+
+dec2006 <- consumption %>% filter(Date <= as.Date("2006/12/31"))
+
+dec17.2006 <- consumption %>% filter(Date > as.Date("2006/12/16") & Date <= as.Date("2006/12/17"))
+
+dec2006.factoredDate <- consumption %>% filter(Date <= as.Date("2006/12/31"))
+  
+dec2006.factoredDate$Date <-  as.factor(dec2006.factoredDate$Date) 
+
+consumption$MonthYear <- format(as.Date(consumption$Date), "%Y-%m")
+
+consumption.no.NAs <- consumption[complete.cases(consumption),]
+consumption.NAs <- consumption[!complete.cases(consumption),]
+month.average <- consumption.no.NAs %>% group_by(MonthYear) %>% summarise(Active_WattHour = sum(Active_WattHour),Kitchen_WattHour = sum(Kitchen_WattHour),LaundryRoom_WattHour = sum(LaundryRoom_WattHour),HeaterAirCon_WattHour = sum(HeaterAirCon_WattHour), Reactive_WattHour = sum(Reactive_WattHour))
+
+month.average$Submeters <- month.average$Kitchen_WattHour + 
+  month.average$LaundryRoom_WattHour + month.average$HeaterAirCon_WattHour
+
+month.average$GeneralConsumption <- month.average$Active_WattHour - month.average$Submeters
+
+monthKWh <- month.average
+
+monthKWh$Active_WattHour <- monthKWh$Active_WattHour/1000
+monthKWh$Reactive_WattHour <- monthKWh$Reactive_WattHour/1000
+monthKWh$Kitchen_WattHour <- monthKWh$Kitchen_WattHour/1000
+monthKWh$LaundryRoom_WattHour <- monthKWh$LaundryRoom_WattHour/1000
+monthKWh$HeaterAirCon_WattHour <- monthKWh$HeaterAirCon_WattHour/1000
+monthKWh$Submeters <- monthKWh$Submeters/1000
+monthKWh$GeneralConsumption <- monthKWh$GeneralConsumption/1000
+
+names(monthKWh) <- c("MonthYear", "ActiveKWh","KitchenKWh","LaundryRoomKWh","HeaterAirConKWh","ReactiveKWh",
+                     "SubmetersKWh","GeneralConsumptionKWh")
+
+#month.average$Month <- as.factor(month.average$Month)
+#month.average$MonthYear <- as.Date(month.average$MonthYear, "%m %Y")
+
+consumption.TS <- zoo(consumption)
+consumption.TS$YearMonth <- yearmon(consumption.TS$Date)
+
+
+
+
+month.average.TS <- zoo(month.average) 
+#month.average.TS$test <- as.yearmon(month.average.TS$MonthYear) DID NOT WORK - ALL NAs 
+month.average.TS$test <- yearmon(month.average.TS$MonthYear)
+
+
+
+
+#Data Exploration
+head(consumption)
+str(consumption)
+summary(consumption)
+class(consumption$DateTime)
+
+hist(consumption$Kitchen_WattHour)
+hist(consumption$LaundryRoom)
+hist(consumption$HeaterAirCon)
+
+head(data2007)
+hist(data2007$Kitchen_WattHour)
+plot(data2007$Date,data2007$Kitchen_WattHour)
+plot(data2008$Date,data2008$Kitchen_WattHour)
+plot(data2009$Date,data2009$Kitchen_WattHour)
+plot(data2010$Date,data2010$Kitchen_WattHour)
+
+plot(data2007$Date,data2007$LaundryRoom_WattHour)
+plot(data2008$Date,data2008$LaundryRoom_WattHour)
+plot(data2009$Date,data2009$LaundryRoom_WattHour)
+plot(data2010$Date,data2010$LaundryRoom_WattHour)
+
+plot(dec2006$DateTime,dec2006$Kitchen_WattHour)
+plot(dec2006$Date,dec2006$LaundryRoom_WattHour)
+plot(dec2006$Date,dec2006$HeaterAirCon_WattHour)
+
+##Plotting one day consumption GEOM_LINE (Dec 17, 2006)
+ggplot(dec17.2006, aes(DateTime, Active_WattHour)) + 
+  geom_line(aes(color = Active_WattHour), size = 1) +
+  theme_minimal()
+
+ggplot(dec17.2006, aes(DateTime, Kitchen_WattHour)) + 
+  geom_line(aes(color = Kitchen_WattHour), size = 1) +
+  theme_minimal()
+
+ggplot(dec17.2006, aes(DateTime, LaundryRoom_WattHour)) + 
+  geom_line(aes(color = LaundryRoom_WattHour), size = 1) +
+  theme_minimal()
+
+ggplot(dec17.2006, aes(DateTime, HeaterAirCon_WattHour)) + 
+  geom_line(aes(color = HeaterAirCon_WattHour), size = 1) +
+  theme_minimal()
+
+##Plotting one day consumption GEOM_BOXPLOT (Dec 17, 2006)
+ggplot(dec17.2006, aes(DateTime, CurrentIntensity, group = 1)) + 
+  geom_boxplot(aes(color = CurrentIntensity)) +
+  theme_minimal()
+
+ggplot(dec2006, aes(Date,CurrentIntensity, group = 1)) +
+  geom_boxplot()
+
+ggplot(dec2006.factoredDate, aes(CurrentIntensity~Date)) +
+  geom_boxplot(width = 5)
+
+boxplot(Active_WattHour~Day, dec2006.factoredDate) 
+####boxplot(df$x ~ months(df$date), outline = FALSE)
+
+##Understanding ranges of variables Dec 2006
+hist(dec2006$ActivePower_WattHour)
+hist(dec2006$ReactivePower_WattHour)
+hist(dec2006$Voltage)
+hist(dec2006$CurrentIntensity)
+hist(dec2006$Kitchen_WattHour)
+hist(dec2006$LaundryRoom_WattHour)
+hist(dec2006$HeaterAirCon_WattHour)
+
+###Remove zeros to see distribution of other numbers
+dec2006kitchen <- dec2006[dec2006$Kitchen > 5,]
+hist(dec2006kitchen$Kitchen_WattHour)
+
+#Summary years
+summary(data2007)
+filter(data2007,Month == 12) %>% summary()
+
+##Plotting month consumption across all years
+ggplot(month.average, aes(MonthYear, Active_WattHour)) + 
+  geom_bar(stat = "identity") +
+  theme_minimal()
+
+ggplot(month.average, aes(MonthYear, Active_WattHour)) + 
+  geom_bar(stat = "identity") +
+  theme_minimal()
+
+ggplot(month.average, aes(MonthYear, Active_WattHour)) + 
+  geom_line(aes(color = Active_WattHour), group = 1) +
+  theme(axis.text.x = element_text(size=7, angle=80))
+
+
+ggplot(month.average, aes(MonthYear, Active_WattHour)) + 
+  geom_line(colour = "dark blue",group = 1, size = 1) +
+  theme(axis.text.x = element_text(size=7, angle=80))
+
+ggplot(month.average, aes(MonthYear)) + 
+  geom_line(aes(y= Active_WattHour,colour = "Active_WattHour",group = 1)) +
+  theme(axis.text.x = element_text(size=7, angle=80)) +
+  geom_line(aes(y= Reactive_WattHour,colour = "Reactive_WattHour",group = 1))
+
+ggplot(month.average, aes(MonthYear)) + 
+  geom_line(aes(y= Active_WattHour,colour = "Active_WattHour",group = 1)) +
+  theme(axis.text.x = element_text(size=7, angle=80)) +
+  geom_line(aes(y= Submeters,colour = "Submeters",group = 1))
+
+
+ggplot(month.average, aes(MonthYear)) + 
+  geom_line(aes(y= GeneralConsumption,colour = "GeneralConsumption",group = 1)) +
+  theme(axis.text.x = element_text(size=7, angle=80)) +
+  geom_line(aes(y= Submeters,colour = "Submeters",group = 1))
+
+
+ggplot(monthKWh, aes(MonthYear)) + 
+  geom_line(aes(y= GeneralConsumptionKWh,colour = "GeneralConsumptionKWh",group = 1), size= 1) +
+  geom_line(aes(y= KitchenKWh,colour = "KitchenKWh",group = 1), size= 1) +
+  geom_line(aes(y= LaundryRoomKWh,colour = "LaundryRoomKWh",group = 1), size= 1) +
+  geom_line(aes(y= HeaterAirConKWh,colour = "HeaterAirConKWh",group = 1), size= 1) +
+  theme(axis.text.x = element_text(size=7, angle=80)) +
+  labs(title="General Consumption vs Submeters",
+        x ="Month/Year", y = "KWh", colour = "")
+
+ggplot(monthKWh, aes(MonthYear)) + 
+  geom_line(aes(y= ActiveKWh,colour = "ActiveKWh",group = 1), size = 1) +
+  theme(axis.text.x = element_text(size=7, angle=80)) +
+  geom_line(aes(y= ReactiveKWh,colour = "ReactiveKWh",group = 1), size = 1) +
+  labs(title="Active vs Reactive Power",
+        x ="Month/Year", y = "KWh", colour = "")
+
+```
